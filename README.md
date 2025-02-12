@@ -8,7 +8,7 @@
 ## Prerequisites
 1. Create virtual environment
 ```
-python -m venv <YOUR venv name>
+py -m venv <YOUR venv name>
 ```
 > [!IMPORTANT]
 > **<ins>Activate your virtual environment</ins>**
