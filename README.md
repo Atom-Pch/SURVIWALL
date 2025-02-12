@@ -6,7 +6,7 @@
 *06016474 STIT 2 (Computer Vision)*
 
 ## Prerequisites
-1. Install Virtual Environment
+1. Create virtual environment
 ```
 python -m venv <YOUR venv name>
 ```
