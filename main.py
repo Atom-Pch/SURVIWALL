@@ -24,9 +24,9 @@ def poseDetection():
             print("Ignoring empty camera frame.")
             continue
 
-        # Convert image to RGB for Mediapipe and flip it
+        # Flip and convert image to RGB for Mediapipe
+        image = cv2.flip(image, 1)
         new_image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-        new_image = cv2.flip(image, 1)
         results = pose.process(new_image)
 
         # Draw pose landmarks if detected
