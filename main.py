@@ -15,26 +15,33 @@ def poseDetection():
     mp_pose = mp.solutions.pose
     mp_draw = mp.solutions.drawing_utils
     pose = mp_pose.Pose(static_image_mode=False, min_detection_confidence=0.5)
-    cap = cv2.VideoCapture(0)
+    
+    cap = cv2.VideoCapture(0)  # Open webcam
+
     while cap.isOpened():
         success, image = cap.read()
         if not success:
             print("Ignoring empty camera frame.")
             continue
 
-        image.flags.writeable = False
-        image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-        results = pose.process(image)
+        # Convert image to RGB for Mediapipe and flip it
+        new_image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+        new_image = cv2.flip(image, 1)
+        results = pose.process(new_image)
 
-        image.flags.writeable = True
-        image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
-        mp_draw.draw_landmarks(
-            image, results.pose_landmarks, mp_pose.POSE_CONNECTIONS)
+        # Draw pose landmarks if detected
+        if results.pose_landmarks:
+            mp_draw.draw_landmarks(image, results.pose_landmarks, mp_pose.POSE_CONNECTIONS)
+
         cv2.imshow('MediaPipe Pose', image)
-        if cv2.waitKey(5) & 0xFF == 27:
+
+        # Exit if ESC is pressed
+        if cv2.waitKey(30) == 27:
             break
-    pose.close()
+
     cap.release()
+    cv2.destroyAllWindows()
+    del pose  # Properly release resources
 
 
 
@@ -45,22 +52,22 @@ def poseDetection():
 while run:
     # main menu
     font = pygame.font.Font(None, 36)
-    text = font.render("SURVIWALL", False, (255, 255, 255))
-    text_rect = text.get_rect(center=(SCREEN_WIDTH / 2, SCREEN_HEIGHT / 3))
-    screen.blit(text, text_rect)
+    title = font.render("SURVIWALL", False, (255, 255, 255))
+    titleRect = title.get_rect(center=(SCREEN_WIDTH / 2, SCREEN_HEIGHT / 3))
+    screen.blit(title, titleRect)
 
     # start button
     font = pygame.font.Font(None, 24)
-    text = font.render("START", False, (255, 255, 255))
-    text_rect = text.get_rect(center=(SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2))
-    screen.blit(text, text_rect)
+    startBtn = font.render("START", False, (255, 255, 255))
+    startRect = startBtn.get_rect(center=(SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2))
+    screen.blit(startBtn, startRect)
 
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
             run = False
 
         # pose detection
-        if text_rect.collidepoint(pygame.mouse.get_pos()) and pygame.mouse.get_pressed()[0]:
+        if startRect.collidepoint(pygame.mouse.get_pos()) and pygame.mouse.get_pressed()[0]:
             poseDetection()
     
     pygame.display.update()
