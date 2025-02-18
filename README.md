@@ -1,5 +1,5 @@
 # SURVIWALL
-*CV project*
+*Computer Vision project*
 
 *2/2024*
 

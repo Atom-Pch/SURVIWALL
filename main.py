@@ -11,6 +11,37 @@ pygame.display.set_caption("SURVIWALL")
 
 run = True
 
+def poseDetection():
+    mp_pose = mp.solutions.pose
+    mp_draw = mp.solutions.drawing_utils
+    pose = mp_pose.Pose(static_image_mode=False, min_detection_confidence=0.5)
+    cap = cv2.VideoCapture(0)
+    while cap.isOpened():
+        success, image = cap.read()
+        if not success:
+            print("Ignoring empty camera frame.")
+            continue
+
+        image.flags.writeable = False
+        image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+        results = pose.process(image)
+
+        image.flags.writeable = True
+        image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
+        mp_draw.draw_landmarks(
+            image, results.pose_landmarks, mp_pose.POSE_CONNECTIONS)
+        cv2.imshow('MediaPipe Pose', image)
+        if cv2.waitKey(5) & 0xFF == 27:
+            break
+    pose.close()
+    cap.release()
+
+
+
+
+
+
+# game loop
 while run:
     # main menu
     font = pygame.font.Font(None, 36)
@@ -28,33 +59,9 @@ while run:
         if event.type == pygame.QUIT:
             run = False
 
-        # started
+        # pose detection
         if text_rect.collidepoint(pygame.mouse.get_pos()) and pygame.mouse.get_pressed()[0]:
-            mp_pose = mp.solutions.pose
-            mp_draw = mp.solutions.drawing_utils
-            pose = mp_pose.Pose(static_image_mode=False, min_detection_confidence=0.5)
-            cap = cv2.VideoCapture(0)
-            while cap.isOpened():
-                success, image = cap.read()
-                if not success:
-                    print("Ignoring empty camera frame.")
-                    continue
-
-                # To improve performance, optionally mark the image as not writeable to pass by reference.
-                image.flags.writeable = False
-                image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-                results = pose.process(image)
-
-                # Draw the pose annotation on the image.
-                image.flags.writeable = True
-                image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
-                mp_draw.draw_landmarks(
-                    image, results.pose_landmarks, mp_pose.POSE_CONNECTIONS)
-                cv2.imshow('MediaPipe Pose', image)
-                if cv2.waitKey(5) & 0xFF == 27:
-                    break
-            pose.close()
-            cap.release()
+            poseDetection()
     
     pygame.display.update()
 
