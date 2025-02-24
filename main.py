@@ -23,10 +23,10 @@ def poseDetection():
     cap.set(4, 720)  # Set the height
 
     # ขนาดของเส้นโครงกระดูกที่ขยายขึ้น 100 เท่า
-    LINE_THICKNESS = 100
+    LINE_THICKNESS = 30     
 
     # โหลดภาพ Hole และตรวจสอบว่าภาพโหลดสำเร็จ
-    image = cv2.imread(r"E:\CVlize\SURVIWALL\assets\test.png", cv2.IMREAD_GRAYSCALE)
+    image = cv2.imread(r"assets/test2.png", cv2.IMREAD_GRAYSCALE)
     if image is None:
         print("Error: Unable to load test.png")
         return
