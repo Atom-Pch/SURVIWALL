@@ -22,14 +22,25 @@ def poseDetection():
     cap.set(3, 1280)  # Set the width
     cap.set(4, 720)  # Set the height
 
-    # ขนาดของเส้นโครงกระดูกที่ขยายขึ้น 1000%
+    # ขนาดของเส้นโครงกระดูกที่ขยายขึ้น 100 เท่า
     LINE_THICKNESS = 100
 
-    # กำหนด Bounding Box ของ Hole (อ้างอิงจากตำแหน่งภาพ overlay)
-    hole_x_min = SCREEN_WIDTH // 2 - 200
-    hole_x_max = SCREEN_WIDTH // 2 + 200
-    hole_y_min = SCREEN_HEIGHT // 2 - 300
-    hole_y_max = SCREEN_HEIGHT // 2 + 300
+    # โหลดภาพ Hole และตรวจสอบว่าภาพโหลดสำเร็จ
+    image = cv2.imread(r"E:\CVlize\SURVIWALL\assets\test.png", cv2.IMREAD_GRAYSCALE)
+    if image is None:
+        print("Error: Unable to load test.png")
+        return
+
+    # แปลงภาพเป็น Binary และหา Contours
+    _, binary = cv2.threshold(image, 128, 255, cv2.THRESH_BINARY_INV)
+    contours, _ = cv2.findContours(binary, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+    # ตรวจสอบว่ามี Contours หรือไม่
+    if not contours:
+        print("Error: No contours found in test.png")
+        return
+
+    hole_polygon = [cnt.reshape(-1, 2).tolist() for cnt in contours][0]
 
     while cap.isOpened():
         success, image = cap.read()
@@ -51,9 +62,7 @@ def poseDetection():
             skeleton_in_hole = True  # สมมติว่าโครงกระดูกอยู่ใน Hole แล้วตรวจสอบ
             for landmark in landmarks:
                 x, y = int(landmark.x * w), int(landmark.y * h)
-                
-                # ถ้าตำแหน่งของจุดใดอยู่นอก Hole ถือว่าไม่ผ่าน
-                if not (hole_x_min <= x <= hole_x_max and hole_y_min <= y <= hole_y_max):
+                if cv2.pointPolygonTest(np.array(hole_polygon, np.int32), (x, y), False) < 0:
                     skeleton_in_hole = False
                     break  # ออกจากลูปทันทีถ้าพบว่ามีจุดออกนอกขอบเขต
 
@@ -74,7 +83,7 @@ def poseDetection():
                 cv2.line(image, (x1, y1), (x2, y2), color, LINE_THICKNESS)
 
         # วาดกรอบ Hole บนภาพ
-        cv2.rectangle(image, (hole_x_min, hole_y_min), (hole_x_max, hole_y_max), (255, 255, 0), 3)
+        cv2.polylines(image, [np.array(hole_polygon, np.int32)], isClosed=True, color=(255, 255, 0), thickness=3)
 
         # แสดงข้อความแจ้งเตือนว่าท่าถูกต้องหรือไม่
         if pose_correct:
@@ -88,7 +97,7 @@ def poseDetection():
 
         # Display the webcam frame on the Pygame window
         screen.blit(frame_surface, (0, 0))
-        
+
         pygame.display.update()
 
         # Break if ESC is pressed
