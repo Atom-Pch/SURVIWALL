@@ -14,65 +14,64 @@ screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
 pygame.display.set_caption("SURVIWALL")
 
 # Constants
-LINE_THICKNESS = 30
-HOLE_WIDTH = 400
-HOLE_HEIGHT = 600
-hole_x_min = SCREEN_WIDTH // 2 - HOLE_WIDTH // 2
-hole_x_max = SCREEN_WIDTH // 2 + HOLE_WIDTH // 2
-hole_y_min = SCREEN_HEIGHT // 2 - HOLE_HEIGHT // 2
-hole_y_max = SCREEN_HEIGHT // 2 + HOLE_HEIGHT // 2
+LINE_THICKNESS = 20
+
+HOLE_WIDTH_LIMIT = 200
+HOLE_HEIGHT_LIMIT = 400
+
+hole_limit_x_min = SCREEN_WIDTH // 2 - HOLE_WIDTH_LIMIT // 2
+hole_limit_x_max = SCREEN_WIDTH // 2 + HOLE_WIDTH_LIMIT // 2
+hole_limit_y_min = SCREEN_HEIGHT // 2 - HOLE_HEIGHT_LIMIT // 2
+hole_limit_y_max = SCREEN_HEIGHT // 2 + HOLE_HEIGHT_LIMIT // 2
+
+HOLE_WIDTH_REC = 400
+HOLE_HEIGHT_REC = 600
+
+hole_rec_x_min = SCREEN_WIDTH // 2 - HOLE_WIDTH_REC // 2
+hole_rec_x_max = SCREEN_WIDTH // 2 + HOLE_WIDTH_REC // 2
+hole_rec_y_min = SCREEN_HEIGHT // 2 - HOLE_HEIGHT_REC // 2
+hole_rec_y_max = SCREEN_HEIGHT // 2 + HOLE_HEIGHT_REC // 2
 
 # MediaPipe Pose Setup
 mp_pose = mp.solutions.pose
 pose = mp_pose.Pose(static_image_mode=False, min_detection_confidence=0.5)
 
-
-def draw_hole(image):
+def draw_hole(image, started):
     """Draw the bounding box (hole) on the image."""
-    cv2.rectangle(
-        image,
-        (hole_x_min, hole_y_min),
-        (hole_x_max, hole_y_max),
-        (255, 255, 0),
-        3,
-    )
+    if not started:
+        cv2.rectangle(
+            image,
+            (hole_limit_x_min, hole_limit_y_min),
+            (hole_limit_x_max, hole_limit_y_max),
+            (0, 255, 255),
+            5,
+        )
+        cv2.rectangle(
+            image,
+            (hole_rec_x_min, hole_rec_y_min),
+            (hole_rec_x_max, hole_rec_y_max),
+            (255, 255, 0),
+            5,
+        )
 
-def process_pose(image, results):
-    """Process pose landmarks and check if the skeleton is within the hole."""
+def check_pose(image, results):
+    """Process pose landmarks and check if the skeleton is not too far."""
     h, w, _ = image.shape
-    pose_ready = False
+    pose_valid = False
 
     if results.pose_landmarks:
         landmarks = results.pose_landmarks.landmark
 
-        # Check if all landmarks are within the hole
-        skeleton_in_hole = True
+        all_landmarks_inside_hole = True  # Assume all landmarks are inside
+
         for landmark in landmarks:
             x, y = int(landmark.x * w), int(landmark.y * h)
-            if not (hole_x_min <= x <= hole_x_max and hole_y_min <= y <= hole_y_max):
-                skeleton_in_hole = False
-                break
+            if not (hole_limit_x_min <= x <= hole_limit_x_max and hole_limit_y_min <= y <= hole_limit_y_max):
+                all_landmarks_inside_hole = False  # At least one landmark is outside
+                break  # No need to check further, countdown continues
 
-        # Divide the hole into 5 rows
-        row_height = (hole_y_max - hole_y_min) // 5
-        row_1_min = hole_y_min
-        row_1_max = hole_y_min + row_height
-        row_5_min = hole_y_max - row_height
-        row_5_max = hole_y_max
+        pose_valid = not all_landmarks_inside_hole  # Countdown resets if ALL are inside
 
-        # Get the y-coordinates of the head and feet landmarks
-        head_y = int(landmarks[mp_pose.PoseLandmark.NOSE].y * h)
-        left_foot_y = int(landmarks[mp_pose.PoseLandmark.LEFT_FOOT_INDEX].y * h)
-        right_foot_y = int(landmarks[mp_pose.PoseLandmark.RIGHT_FOOT_INDEX].y * h)
-
-        # Check if the head is in the first row and the feet are in the last row
-        head_in_first_row = row_1_min <= head_y <= row_1_max
-        feet_in_last_row = (
-            row_5_min <= left_foot_y <= row_5_max and row_5_min <= right_foot_y <= row_5_max
-        )
-
-        # Combine all conditions
-        pose_ready = skeleton_in_hole and head_in_first_row and feet_in_last_row
 
         # Draw skeleton
         for connection in mp_pose.POSE_CONNECTIONS:
@@ -83,17 +82,17 @@ def process_pose(image, results):
             x1, y1 = int(start.x * w), int(start.y * h)
             x2, y2 = int(end.x * w), int(end.y * h)
 
-            color = (0, 255, 0) if pose_ready else (0, 0, 255)
+            color = (0, 255, 0) if pose_valid else (0, 0, 255)
             cv2.line(image, (x1, y1), (x2, y2), color, LINE_THICKNESS)
 
-    return pose_ready
+    return pose_valid
 
 def display_message(image, pose_ready):
     """Display a message on the image based on pose readiness."""
     if pose_ready:
         cv2.putText(
             image,
-            "Hold still!",
+            "Get ready!",
             (50, 50),
             cv2.FONT_HERSHEY_SIMPLEX,
             1.5,
@@ -103,7 +102,7 @@ def display_message(image, pose_ready):
     else:
         cv2.putText(
             image,
-            "Stand in the box!",
+            "Too far, come closer!",
             (50, 50),
             cv2.FONT_HERSHEY_SIMPLEX,
             1.5,
@@ -111,13 +110,57 @@ def display_message(image, pose_ready):
             3,
         )
 
-def pose_detection():
+playing_countdown = None
+def display_playing_content(image):
+    """Display playing content on the image."""
+    global playing_countdown
+
+    if playing_countdown is None:
+        playing_countdown = time.time()  # Start the countdown
+
+    elapsed_time = time.time() - playing_countdown
+    remaining_time = max(0, 5 - int(elapsed_time))
+
+    if remaining_time == 0:
+        text_size = cv2.getTextSize("Game Over", cv2.FONT_HERSHEY_SIMPLEX, 5, 5)[0]
+        text_x = (SCREEN_WIDTH - text_size[0]) // 2
+        text_y = (SCREEN_HEIGHT - text_size[1]) // 2
+        cv2.putText(
+            image,
+            "Game Over",
+            (text_x, text_y),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            5,
+            (0, 0, 255),
+            20,
+        )
+    
+    # Display countdown timer
+    cv2.rectangle(
+        image,
+        (0, 0),
+        (300, 100),
+        (0, 0, 0),
+        -1,
+    )
+    cv2.putText(
+        image,
+        f"Time: {remaining_time}",
+        (25, 75),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        2,
+        (255, 255, 255),
+        5,
+    )
+
+def ready_to_play():
     """Run the pose detection loop."""
     cap = cv2.VideoCapture(0)
     cap.set(3, SCREEN_WIDTH)
     cap.set(4, SCREEN_HEIGHT)
 
-    countdown_start_time = None  # Variable to track the start of the countdown
+    countdown_start_time = None
+    game_started = False  # Track if game has officially started
 
     while cap.isOpened():
         success, image = cap.read()
@@ -131,50 +174,48 @@ def pose_detection():
         results = pose.process(image_rgb)
 
         # Process pose and check if it's ready
-        pose_ready = process_pose(image, results)
+        pose_ready = check_pose(image, results)
 
-        # Handle countdown logic
-        if pose_ready:
-            if countdown_start_time is None:
-                countdown_start_time = time.time()  # Start the countdown
-            elapsed_time = time.time() - countdown_start_time
-            remaining_time = max(0, 5 - int(elapsed_time))  # Calculate remaining time
+        if not game_started:
+            # Handle countdown logic
+            if pose_ready:
+                if countdown_start_time is None:
+                    countdown_start_time = time.time()  # Start the countdown
+                elapsed_time = time.time() - countdown_start_time
+                remaining_time = max(0, 5 - int(elapsed_time))
 
-            if remaining_time == 0:
-                # Pose held for 5 seconds, display success message
-                cv2.putText(
-                    image,
-                    "Game Start!",
-                    (50, 100),
-                    cv2.FONT_HERSHEY_SIMPLEX,
-                    2,
-                    (0, 255, 255),
-                    5,
-                )
+                if remaining_time == 0:
+                    game_started = True  # Mark game as started
+
+            else:
+                countdown_start_time = None  # Reset countdown
+                remaining_time = 5  # Reset to 5 seconds
+
+            # Draw hole and display messages
+            draw_hole(image, game_started)
+            display_message(image, pose_ready)
+
+            # Display countdown timer
+            cv2.putText(
+                image,
+                f"Countdown: {remaining_time}",
+                (50, 150),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                1.5,
+                (255, 255, 255),
+                3,
+            )
+
         else:
-            countdown_start_time = None  # Reset the countdown if pose is incorrect
-            remaining_time = 5  # Reset the countdown to 5 seconds
-
-        # Draw the hole and display messages
-        draw_hole(image)
-        display_message(image, pose_ready)
-
-        # Display countdown timer on the screen
-        cv2.putText(
-            image,
-            f"Countdown: {remaining_time} !",
-            (50, 150),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            1.5,
-            (255, 255, 255),
-            3,
-        )
+            draw_hole(image, game_started)
+            # start the game
+            display_playing_content(image)
 
         # Convert the OpenCV frame to Pygame surface
         image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
         frame_surface = pygame.surfarray.make_surface(np.transpose(image_rgb, (1, 0, 2)))
 
-        # Display the webcam frame on the Pygame window
+        # Display the frame in Pygame
         screen.blit(frame_surface, (0, 0))
         pygame.display.update()
 
@@ -229,7 +270,7 @@ while run:
             run = False
 
         if start_rect.collidepoint(pygame.mouse.get_pos()) and pygame.mouse.get_pressed()[0]:
-            pose_detection()
+            ready_to_play()
 
     pygame.display.update()
 
