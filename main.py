@@ -32,6 +32,10 @@ hole_rec_x_max = SCREEN_WIDTH // 2 + HOLE_WIDTH_REC // 2
 hole_rec_y_min = SCREEN_HEIGHT // 2 - HOLE_HEIGHT_REC // 2
 hole_rec_y_max = SCREEN_HEIGHT // 2 + HOLE_HEIGHT_REC // 2
 
+# Global variables for game state
+playing_countdown = None
+lives = 3
+
 # MediaPipe Pose Setup
 mp_pose = mp.solutions.pose
 pose = mp_pose.Pose(static_image_mode=False, min_detection_confidence=0.5)
@@ -89,11 +93,18 @@ def check_pose(image, results):
 
 def display_message(image, pose_ready):
     """Display a message on the image based on pose readiness."""
+    cv2.rectangle(
+        image,
+        (0, 0),
+        (400, 150),
+        (0, 0, 0),
+        -1,
+    )
     if pose_ready:
         cv2.putText(
             image,
             "Get ready!",
-            (50, 50),
+            (30, 60),
             cv2.FONT_HERSHEY_SIMPLEX,
             1.5,
             (0, 255, 0),
@@ -102,39 +113,46 @@ def display_message(image, pose_ready):
     else:
         cv2.putText(
             image,
-            "Too far, come closer!",
-            (50, 50),
+            "Come closer!",
+            (30, 60),
             cv2.FONT_HERSHEY_SIMPLEX,
             1.5,
             (0, 0, 255),
             3,
         )
 
-playing_countdown = None
 def display_playing_content(image):
-    """Display playing content on the image."""
-    global playing_countdown
+    """Display playing content on the image, handle timer expiry, and deduct a heart."""
+    global playing_countdown, lives
 
-    if playing_countdown is None:
-        playing_countdown = time.time()  # Start the countdown
-
-    elapsed_time = time.time() - playing_countdown
-    remaining_time = max(0, 5 - int(elapsed_time))
-
-    if remaining_time == 0:
-        text_size = cv2.getTextSize("Game Over", cv2.FONT_HERSHEY_SIMPLEX, 5, 5)[0]
-        text_x = (SCREEN_WIDTH - text_size[0]) // 2
-        text_y = (SCREEN_HEIGHT - text_size[1]) // 2
+    # If no lives remain, show GAME OVER and return
+    if lives <= 0:
         cv2.putText(
             image,
-            "Game Over",
-            (text_x, text_y),
+            "GAME OVER",
+            (SCREEN_WIDTH // 2 - 450, SCREEN_HEIGHT // 2),
             cv2.FONT_HERSHEY_SIMPLEX,
             5,
             (0, 0, 255),
-            20,
+            25,
         )
-    
+        return
+
+    # Start or continue the countdown timer
+    if playing_countdown is None:
+        playing_countdown = time.time()  # Start the countdown for the current hole
+
+    elapsed_time = time.time() - playing_countdown
+
+    # Check if the timer has reached 5 seconds
+    if elapsed_time >= 5:
+        lives -= 1  # Deduct one heart
+        print("next hole")  # Debug message for now
+        playing_countdown = time.time()  # Reset the timer for the next hole
+        elapsed_time = 0  # Reset elapsed time
+
+    remaining_time = max(0, 5 - int(elapsed_time))
+
     # Display countdown timer
     cv2.rectangle(
         image,
@@ -153,8 +171,27 @@ def display_playing_content(image):
         5,
     )
 
+    # Draw the player's remaining hearts
+    for i in range(lives):
+        cv2.rectangle(
+            image,
+            (SCREEN_WIDTH - 100 - i * 100, 20),
+            (SCREEN_WIDTH - 40 - i * 100, 80),
+            (0, 0, 225),
+            -1,
+        )
+        cv2.rectangle(
+            image,
+            (SCREEN_WIDTH - 100 - i * 100, 20),
+            (SCREEN_WIDTH - 40 - i * 100, 80),
+            (0, 0, 0),
+            5,
+        )
+
 def ready_to_play():
-    """Run the pose detection loop."""
+    """Run the pose detection and game loop after starting."""
+
+    # Reset the game state each time the game starts
     cap = cv2.VideoCapture(0)
     cap.set(3, SCREEN_WIDTH)
     cap.set(4, SCREEN_HEIGHT)
@@ -177,7 +214,7 @@ def ready_to_play():
         pose_ready = check_pose(image, results)
 
         if not game_started:
-            # Handle countdown logic
+            # Handle countdown logic before game officially starts
             if pose_ready:
                 if countdown_start_time is None:
                     countdown_start_time = time.time()  # Start the countdown
@@ -186,36 +223,32 @@ def ready_to_play():
 
                 if remaining_time == 0:
                     game_started = True  # Mark game as started
-
             else:
-                countdown_start_time = None  # Reset countdown
-                remaining_time = 5  # Reset to 5 seconds
+                countdown_start_time = None  # Reset countdown if pose not ready
+                remaining_time = 5
 
             # Draw hole and display messages
             draw_hole(image, game_started)
             display_message(image, pose_ready)
 
-            # Display countdown timer
+            # Display countdown timer before game starts
             cv2.putText(
                 image,
                 f"Countdown: {remaining_time}",
-                (50, 150),
+                (30, 120),
                 cv2.FONT_HERSHEY_SIMPLEX,
                 1.5,
                 (255, 255, 255),
                 3,
             )
-
         else:
             draw_hole(image, game_started)
-            # start the game
+            # In game: update playing content (timer, hearts, etc.)
             display_playing_content(image)
 
-        # Convert the OpenCV frame to Pygame surface
+        # Convert the OpenCV frame to a Pygame surface and display it
         image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
         frame_surface = pygame.surfarray.make_surface(np.transpose(image_rgb, (1, 0, 2)))
-
-        # Display the frame in Pygame
         screen.blit(frame_surface, (0, 0))
         pygame.display.update()
 
@@ -235,13 +268,13 @@ def draw_menu():
     screen.fill((0, 0, 0))  # Clear the screen with black
 
     # Title
-    font = pygame.font.Font(None, 36)
-    title = font.render("SURVIWALL", False, (255, 255, 255))
+    font = pygame.font.Font(None, 108)
+    title = font.render("S U R V I W A L L", False, (255, 255, 255))
     title_rect = title.get_rect(center=(SCREEN_WIDTH / 2, SCREEN_HEIGHT / 3))
     screen.blit(title, title_rect)
 
     # Start button
-    font = pygame.font.Font(None, 24)
+    font = pygame.font.Font(None, 48)
     start_btn = font.render("START", False, (255, 255, 255))
     start_rect = start_btn.get_rect(center=(SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2))
 
