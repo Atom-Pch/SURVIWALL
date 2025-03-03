@@ -70,7 +70,7 @@ def load_pose_contour(pose_number):
 
     return [cnt.reshape(-1, 2).tolist() for cnt in contours][0]
 
-def draw_hole(image, started):
+def draw_box(image, started):
     """Draw the bounding box (hole) on the image."""
     if not started:
         # Draw recommended area (cyan)
@@ -193,10 +193,11 @@ def display_playing_content(image, contour, results):
 
     # If game is over, show appropriate message and return
     if game_over:
+        (GO_text_width, GO_text_height), _ = cv2.getTextSize("GAME OVER", cv2.FONT_HERSHEY_SIMPLEX, 5, 25)
         cv2.putText(
             image,
             "GAME OVER",
-            (SCREEN_WIDTH // 2 - 450, SCREEN_HEIGHT // 2),
+            ((SCREEN_WIDTH // 2) - (GO_text_width // 2), (SCREEN_HEIGHT // 2) + (GO_text_height // 2)),
             cv2.FONT_HERSHEY_SIMPLEX,
             5,
             (0, 0, 255),
@@ -205,10 +206,11 @@ def display_playing_content(image, contour, results):
         return
     
     if victory:
+        (VIC_text_width, VIC_text_height), _ = cv2.getTextSize("VICTORY", cv2.FONT_HERSHEY_SIMPLEX, 5, 25)
         cv2.putText(
             image,
-            "VICTORY!",
-            (SCREEN_WIDTH // 2 - 400, SCREEN_HEIGHT // 2),
+            "VICTORY",
+            ((SCREEN_WIDTH // 2) - (VIC_text_width // 2), (SCREEN_HEIGHT // 2) + (VIC_text_height // 2)),
             cv2.FONT_HERSHEY_SIMPLEX,
             5,
             (0, 255, 0),
@@ -252,14 +254,14 @@ def display_playing_content(image, contour, results):
             [np.array(contour, np.int32)], 
             isClosed=True, 
             color=(255, 255, 0), 
-            thickness=3
+            thickness=10
         )
 
     # Display countdown timer and pose count
     cv2.rectangle(
         image,
         (0, 0),
-        (330, 180),
+        (340, 180),
         (0, 0, 0),
         -1,
     )
@@ -285,21 +287,44 @@ def display_playing_content(image, contour, results):
     )
 
     # Draw the player's remaining hearts
-    for i in range(lives):
-        cv2.rectangle(
-            image,
-            (SCREEN_WIDTH - 100 - i * 100, 20),
-            (SCREEN_WIDTH - 40 - i * 100, 80),
-            (0, 0, 225),
-            -1,
-        )
-        cv2.rectangle(
-            image,
-            (SCREEN_WIDTH - 100 - i * 100, 20),
-            (SCREEN_WIDTH - 40 - i * 100, 80),
-            (0, 0, 0),
-            5,
-        )
+    # Load the heart icon
+    heart_icon = cv2.imread("assets/heart.png", cv2.IMREAD_UNCHANGED)
+
+    # Check if the heart icon was loaded correctly
+    if heart_icon is None:
+        print("Failed to load heart icon.")
+    else:
+        # Resize the heart icon if necessary
+        heart_icon = cv2.resize(heart_icon, (100, 100))  # Adjust size as needed
+
+        # Extract the alpha channel from the heart icon for transparency
+        if heart_icon.shape[2] == 4:  # Check if the image has an alpha channel
+            alpha_channel = heart_icon[:, :, 3] / 255.0
+            heart_icon = heart_icon[:, :, :3]  # Remove alpha channel for BGR overlay
+        else:
+            alpha_channel = None
+
+        # Draw the player's remaining hearts
+        for i in range(lives):
+            # Calculate position for each heart
+            x_offset = SCREEN_WIDTH - 125 - i * 125
+            y_offset = 25
+
+            # Define the region of interest (ROI) on the main image
+            roi = image[y_offset:y_offset + 100, x_offset:x_offset + 100]
+
+            # Overlay heart icon using alpha blending if alpha channel exists
+            if alpha_channel is not None:
+                for c in range(3):  # Iterate over BGR channels
+                    roi[:, :, c] = (
+                        alpha_channel * heart_icon[:, :, c] + (1 - alpha_channel) * roi[:, :, c]
+                    )
+            else:
+                # Directly copy the heart icon if no alpha channel
+                roi[:, :, :] = heart_icon
+
+            # Place the modified ROI back into the main image
+            image[y_offset:y_offset + 100, x_offset:x_offset + 100] = roi
 
 def ready_to_play():
     """Run the pose detection and game loop after starting."""
@@ -337,7 +362,7 @@ def ready_to_play():
         if not game_started:
             # Preparation phase - check if player is in position
             pose_ready = check_pose_with_rectangle(image, results)
-            draw_hole(image, game_started)
+            draw_box(image, game_started)
             display_message(image, pose_ready)
             
             # Start countdown if pose is ready
