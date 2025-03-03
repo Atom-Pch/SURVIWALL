@@ -71,7 +71,7 @@ def load_pose_contour(pose_number):
     return [cnt.reshape(-1, 2).tolist() for cnt in contours][0]
 
 def draw_box(image, started):
-    """Draw the bounding box (hole) on the image."""
+    """Draw the bounding box on the image."""
     if not started:
         # Draw recommended area (cyan)
         cv2.rectangle(
@@ -179,8 +179,8 @@ def display_message(image, pose_ready):
     else:
         cv2.putText(
             image,
-            "Come closer!",
-            (30, 60),
+            "Can't see you!",
+            (30, 90),
             cv2.FONT_HERSHEY_SIMPLEX,
             1.5,
             (0, 0, 255),
@@ -343,6 +343,7 @@ def ready_to_play():
 
     countdown_start_time = None
     game_started = False  # Track if game has officially started
+    loaded_pose_number = current_pose  # Track which pose is currently loaded
     
     # Load the first pose
     current_contour = load_pose_contour(current_pose)
@@ -376,8 +377,8 @@ def ready_to_play():
             # If countdown is active, display it
             if countdown_start_time is not None:
                 elapsed = time.time() - countdown_start_time
-                if elapsed < 5:  # 5-second countdown
-                    count = 5 - int(elapsed)
+                if elapsed < 10:  # 10-second countdown
+                    count = 10 - int(elapsed)
                     cv2.putText(
                         image,
                         f"Countdown: {str(count)}",
@@ -393,9 +394,10 @@ def ready_to_play():
         else:
             # Game phase - check if pose matches the contour
             # If we need a new contour (after advancing to next pose)
-            if current_contour is None or current_pose > total_poses:
+            if current_pose != loaded_pose_number:
                 current_contour = load_pose_contour(current_pose)
-            
+                loaded_pose_number = current_pose
+
             # Display game content (timer, hearts, current pose)
             display_playing_content(image, current_contour, results)
 
