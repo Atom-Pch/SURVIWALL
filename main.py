@@ -192,6 +192,7 @@ def display_playing_content(image, contour, results):
     global playing_countdown, lives, current_pose, game_over, victory
 
     # If game is over, show appropriate message and return
+    (res_text_width, res_text_height), _ = cv2.getTextSize("Press SPACE to restart", cv2.FONT_HERSHEY_SIMPLEX, 2, 10)
     if game_over:
         (GO_text_width, GO_text_height), _ = cv2.getTextSize("GAME OVER", cv2.FONT_HERSHEY_SIMPLEX, 5, 25)
         cv2.putText(
@@ -200,8 +201,35 @@ def display_playing_content(image, contour, results):
             ((SCREEN_WIDTH // 2) - (GO_text_width // 2), (SCREEN_HEIGHT // 2) + (GO_text_height // 2)),
             cv2.FONT_HERSHEY_SIMPLEX,
             5,
+            (0, 0, 0),
+            50,
+        )
+        cv2.putText(
+            image,
+            "GAME OVER",
+            ((SCREEN_WIDTH // 2) - (GO_text_width // 2), (SCREEN_HEIGHT // 2) + (GO_text_height // 2)),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            5,
             (0, 0, 255),
             25,
+        )
+        cv2.putText(
+            image,
+            "Press SPACE to restart",
+            ((SCREEN_WIDTH // 2) - (res_text_width // 2), (SCREEN_HEIGHT // 2) + (res_text_height // 2) + 150),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            2,
+            (0, 0, 0),
+            20,
+        )
+        cv2.putText(
+            image,
+            "Press SPACE to restart",
+            ((SCREEN_WIDTH // 2) - (res_text_width // 2), (SCREEN_HEIGHT // 2) + (res_text_height // 2) + 150),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            2,
+            (255, 255, 255),
+            10,
         )
         return
     
@@ -213,8 +241,35 @@ def display_playing_content(image, contour, results):
             ((SCREEN_WIDTH // 2) - (VIC_text_width // 2), (SCREEN_HEIGHT // 2) + (VIC_text_height // 2)),
             cv2.FONT_HERSHEY_SIMPLEX,
             5,
+            (0, 0, 0),
+            30,
+        )
+        cv2.putText(
+            image,
+            "VICTORY",
+            ((SCREEN_WIDTH // 2) - (VIC_text_width // 2), (SCREEN_HEIGHT // 2) + (VIC_text_height // 2)),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            5,
             (0, 255, 0),
             25,
+        )
+        cv2.putText(
+            image,
+            "Press SPACE to restart",
+            ((SCREEN_WIDTH // 2) - (res_text_width // 2), (SCREEN_HEIGHT // 2) + (res_text_height // 2) + 150),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            2,
+            (0, 0, 0),
+            20,
+        )
+        cv2.putText(
+            image,
+            "Press SPACE to restart",
+            ((SCREEN_WIDTH // 2) - (res_text_width // 2), (SCREEN_HEIGHT // 2) + (res_text_height // 2) + 150),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            2,
+            (255, 255, 255),
+            10,
         )
         return
 
@@ -410,38 +465,41 @@ def ready_to_play():
 
         # Handle events
         for event in pygame.event.get():
-            if event.type == pygame.QUIT:
+            if event.type == pygame.QUIT or (event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE):
                 cap.release()
                 pygame.quit()
                 exit()
-            if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+            if event.type == pygame.KEYDOWN and event.key == pygame.K_SPACE:
                 cap.release()
                 return  # Return to main menu instead of quitting
 
 def draw_menu():
     """Draw the main menu."""
-    screen.fill((0, 0, 0))  # Clear the screen with black
+    menu_bg = pygame.image.load("assets/menu_bg.png")
+    screen.blit(menu_bg, (0, 0))  # Set the background image for the menu
 
     # Title
-    font = pygame.font.Font(None, 108)
-    title = font.render("S U R V I W A L L", False, (255, 255, 255))
+    font = pygame.font.SysFont(None, 150, bold=True)
+    title_shadow = font.render("S U R V I W A L L", True, (0, 0, 0))
+    title_shadow_rect = title_shadow.get_rect(center=(SCREEN_WIDTH / 2, SCREEN_HEIGHT / 3))
+    screen.blit(title_shadow, title_shadow_rect)
+
+    font = pygame.font.SysFont(None, 144)
+    title = font.render("S U R V I W A L L", True, (255, 255, 255))
     title_rect = title.get_rect(center=(SCREEN_WIDTH / 2, SCREEN_HEIGHT / 3))
     screen.blit(title, title_rect)
 
     # Start button
-    font = pygame.font.Font(None, 48)
-    start_btn = font.render("START", False, (255, 255, 255))
+    font = pygame.font.SysFont(None, 48)
+    start_btn = font.render("START", True, (255, 255, 255))
     start_rect = start_btn.get_rect(center=(SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2))
 
     # Give the button a visible box and border
-    pygame.draw.rect(screen, (0, 128, 0), start_rect.inflate(40, 40), 2)
+    pygame.draw.rect(screen, (0, 192, 0), start_rect.inflate(40, 40), 4)
 
     # Hover over and click effects
     if start_rect.collidepoint(pygame.mouse.get_pos()):
-        if pygame.mouse.get_pressed()[0]:
-            pygame.draw.rect(screen, (0, 64, 0), start_rect.inflate(30, 30), 0)
-        else:
-            pygame.draw.rect(screen, (0, 192, 0), start_rect.inflate(30, 30), 0)
+        pygame.draw.rect(screen, (0, 128, 0), start_rect.inflate(32, 32), 0)
 
     screen.blit(start_btn, start_rect)
 
@@ -455,7 +513,7 @@ def main():
         start_rect = draw_menu()
 
         for event in pygame.event.get():
-            if event.type == pygame.QUIT:
+            if event.type == pygame.QUIT or (event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE):
                 run = False
 
             if event.type == pygame.MOUSEBUTTONDOWN:
