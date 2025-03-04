@@ -73,8 +73,13 @@ def load_pose_contour(pose_number):
     if not contours:
         print(f"Error: No contours found in {image_path}")
         return None
-
-    return [cnt.reshape(-1, 2).tolist() for cnt in contours][0]
+    
+    # Return the largest contour by area
+    if len(contours) > 1:
+        largest_contour = max(contours, key=cv2.contourArea)
+        return largest_contour.reshape(-1, 2).tolist()
+    else:
+        return contours[0].reshape(-1, 2).tolist()
 
 def draw_box(image, started):
     """Draw the bounding box on the image."""
@@ -285,6 +290,28 @@ def display_playing_content(image, contour, results):
 
     elapsed_time = time.time() - playing_countdown
 
+    # Check if we have a valid contour
+    if contour is None:
+        # If contour is None, display an error message
+        cv2.putText(
+            image,
+            f"Error loading pose {current_pose}",
+            (SCREEN_WIDTH // 2 - 300, SCREEN_HEIGHT // 2),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            1.5,
+            (0, 0, 255),
+            3,
+        )
+        # Skip to next pose after a short delay
+        if elapsed_time >= 2:
+            current_pose += 1
+            if current_pose > total_poses:
+                victory = True
+                # Load victory music...
+                return
+            playing_countdown = time.time()
+        return
+
     # Always draw the skeleton regardless of timer
     # This is the key change - draw skeleton continuously
     # pose_valid = check_pose_with_contour(image, results, contour) #and check_pose_with_rectangle(image, results)
@@ -433,7 +460,8 @@ def ready_to_play():
 
     countdown_start_time = None
     game_started = False  # Track if game has officially started
-    loaded_pose_number = current_pose  # Track which pose is currently loaded
+    loaded_pose_number = 0  # Track which pose is currently loaded
+    current_contour = None
     
     # Load the first pose
     current_contour = load_pose_contour(current_pose)
