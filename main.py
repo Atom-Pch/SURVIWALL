@@ -19,8 +19,8 @@ pygame.display.set_caption("SURVIWALL")
 # Constants
 LINE_THICKNESS = 20
 
-HOLE_WIDTH_LIMIT = 200
-HOLE_HEIGHT_LIMIT = 400
+HOLE_WIDTH_LIMIT = 250
+HOLE_HEIGHT_LIMIT = 450
 
 hole_limit_x_min = SCREEN_WIDTH // 2 - HOLE_WIDTH_LIMIT // 2
 hole_limit_x_max = SCREEN_WIDTH // 2 + HOLE_WIDTH_LIMIT // 2
@@ -135,7 +135,7 @@ def check_pose_with_contour(image, results, contour):
 
         # Convert contour to numpy array for pointPolygonTest
         contour_np = np.array(contour, np.int32)
-        
+
         skeleton_in_hole = True  # Assume skeleton is in hole
         for landmark in landmarks:
             x, y = int(landmark.x * w), int(landmark.y * h)
@@ -231,7 +231,7 @@ def display_playing_content(image, contour, results):
             cv2.FONT_HERSHEY_SIMPLEX,
             2,
             (255, 255, 255),
-            10,
+            5,
         )
         return
     
@@ -271,7 +271,7 @@ def display_playing_content(image, contour, results):
             cv2.FONT_HERSHEY_SIMPLEX,
             2,
             (255, 255, 255),
-            10,
+            5,
         )
         return
 
@@ -280,10 +280,24 @@ def display_playing_content(image, contour, results):
         playing_countdown = time.time()  # Start the countdown for the current hole
 
     elapsed_time = time.time() - playing_countdown
-    
+
     # Always draw the skeleton regardless of timer
     # This is the key change - draw skeleton continuously
-    pose_valid = check_pose_with_contour(image, results, contour)
+    # pose_valid = check_pose_with_contour(image, results, contour) #and check_pose_with_rectangle(image, results)
+
+    if check_pose_with_rectangle(image, results):
+        pose_valid = check_pose_with_contour(image, results, contour)
+    else:
+        pose_valid =  check_pose_with_rectangle(image, results)
+        cv2.putText(
+            image,
+            "Too far!",
+            (25, 300),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            3,
+            (0, 0, 255),
+            10,
+        )
 
     # Check if the timer has reached 10 seconds
     if elapsed_time >= 10:
@@ -301,6 +315,7 @@ def display_playing_content(image, contour, results):
                 return
         else:
             lives -= 1  # Deduct one heart
+            current_pose += 1 # Skip to the next pose
             if lives <= 0:
                 game_over = True
 
@@ -330,7 +345,7 @@ def display_playing_content(image, contour, results):
     cv2.rectangle(
         image,
         (0, 0),
-        (350, 180),
+        (360, 180),
         (0, 0, 0),
         -1,
     )
