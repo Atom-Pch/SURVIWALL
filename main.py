@@ -43,6 +43,10 @@ total_poses = 10
 game_over = False
 victory = False
 
+# Sounds
+correct_sound = pygame.mixer.Sound("assets/correct_sound.ogg")
+wrong_sound = pygame.mixer.Sound("assets/wrong_sound.ogg")
+
 # MediaPipe Pose Setup
 mp_pose = mp.solutions.pose
 pose = mp_pose.Pose(static_image_mode=False, min_detection_confidence=0.5)
@@ -304,6 +308,7 @@ def display_playing_content(image, contour, results):
         # Use the already calculated pose_valid result
         if pose_valid:
             current_pose += 1
+            pygame.mixer.Sound.play(correct_sound)
             if current_pose > total_poses:
                 victory = True
 
@@ -316,6 +321,7 @@ def display_playing_content(image, contour, results):
         else:
             lives -= 1  # Deduct one heart
             current_pose += 1 # Skip to the next pose
+            pygame.mixer.Sound.play(wrong_sound)
             if lives <= 0:
                 game_over = True
 
