@@ -54,12 +54,12 @@ pose = mp_pose.Pose(static_image_mode=False, min_detection_confidence=0.5)
 def load_pose_contour(pose_number):
     """Load a pose image and extract its contour."""
     image_path = f"assets/pose{pose_number}.png"
-    
+
     # Check if file exists
     if not os.path.exists(image_path):
         print(f"Error: Unable to load {image_path}")
         return None
-        
+
     image = cv2.imread(image_path, cv2.IMREAD_GRAYSCALE)
     if image is None:
         print(f"Error: Unable to load {image_path}")
