@@ -405,6 +405,11 @@ def ready_to_play():
     # Load the first pose
     current_contour = load_pose_contour(current_pose)
 
+    mixer.music.unload()
+    mixer.music.load("assets/ready_music.ogg")
+    pygame.time.delay(100)
+    mixer.music.play(-1)
+
     while cap.isOpened():
         success, image = cap.read()
         if not success:
@@ -473,6 +478,7 @@ def ready_to_play():
                 exit()
             if event.type == pygame.KEYDOWN and event.key == pygame.K_SPACE:
                 cap.release()
+                main_music()
                 return  # Return to main menu instead of quitting
 
 def draw_menu():
@@ -507,12 +513,18 @@ def draw_menu():
 
     return start_rect
 
-"""Main game loop."""
-def main():
-    run = True
+def main_music():
+    """Play the main menu music."""
+    if mixer.music.get_busy():
+        mixer.music.unload()
     mixer.music.load("assets/menu_music.ogg")
     pygame.time.delay(100)
     mixer.music.play(-1)
+
+"""Main game loop."""
+def main():
+    run = True
+    main_music()
 
     while run:
         start_rect = draw_menu()
