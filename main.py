@@ -4,9 +4,11 @@ import cv2
 import mediapipe as mp
 import time
 import os
+from pygame import mixer
 
 # Initialize Pygame
 pygame.init()
+mixer.init()
 
 # Screen size and title
 SCREEN_WIDTH = 1280
@@ -508,6 +510,9 @@ def draw_menu():
 """Main game loop."""
 def main():
     run = True
+    mixer.music.load("assets/menu_music.ogg")
+    pygame.time.delay(100)
+    mixer.music.play(-1)
 
     while run:
         start_rect = draw_menu()
