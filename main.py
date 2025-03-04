@@ -200,7 +200,7 @@ def display_playing_content(image, contour, results):
         cv2.putText(
             image,
             "GAME OVER",
-            ((SCREEN_WIDTH // 2) - (GO_text_width // 2), (SCREEN_HEIGHT // 2) + (GO_text_height // 2)),
+            ((SCREEN_WIDTH // 2) - (GO_text_width // 2), (SCREEN_HEIGHT // 2) + (GO_text_height // 2) - 100),
             cv2.FONT_HERSHEY_SIMPLEX,
             5,
             (0, 0, 0),
@@ -209,7 +209,7 @@ def display_playing_content(image, contour, results):
         cv2.putText(
             image,
             "GAME OVER",
-            ((SCREEN_WIDTH // 2) - (GO_text_width // 2), (SCREEN_HEIGHT // 2) + (GO_text_height // 2)),
+            ((SCREEN_WIDTH // 2) - (GO_text_width // 2), (SCREEN_HEIGHT // 2) + (GO_text_height // 2) - 100),
             cv2.FONT_HERSHEY_SIMPLEX,
             5,
             (0, 0, 255),
@@ -218,7 +218,7 @@ def display_playing_content(image, contour, results):
         cv2.putText(
             image,
             "Press SPACE to restart",
-            ((SCREEN_WIDTH // 2) - (res_text_width // 2), (SCREEN_HEIGHT // 2) + (res_text_height // 2) + 150),
+            ((SCREEN_WIDTH // 2) - (res_text_width // 2), (SCREEN_HEIGHT // 2) + (res_text_height // 2) + 50),
             cv2.FONT_HERSHEY_SIMPLEX,
             2,
             (0, 0, 0),
@@ -227,7 +227,7 @@ def display_playing_content(image, contour, results):
         cv2.putText(
             image,
             "Press SPACE to restart",
-            ((SCREEN_WIDTH // 2) - (res_text_width // 2), (SCREEN_HEIGHT // 2) + (res_text_height // 2) + 150),
+            ((SCREEN_WIDTH // 2) - (res_text_width // 2), (SCREEN_HEIGHT // 2) + (res_text_height // 2) + 50),
             cv2.FONT_HERSHEY_SIMPLEX,
             2,
             (255, 255, 255),
@@ -240,7 +240,7 @@ def display_playing_content(image, contour, results):
         cv2.putText(
             image,
             "VICTORY",
-            ((SCREEN_WIDTH // 2) - (VIC_text_width // 2), (SCREEN_HEIGHT // 2) + (VIC_text_height // 2)),
+            ((SCREEN_WIDTH // 2) - (VIC_text_width // 2), (SCREEN_HEIGHT // 2) + (VIC_text_height // 2) - 100),
             cv2.FONT_HERSHEY_SIMPLEX,
             5,
             (0, 0, 0),
@@ -249,7 +249,7 @@ def display_playing_content(image, contour, results):
         cv2.putText(
             image,
             "VICTORY",
-            ((SCREEN_WIDTH // 2) - (VIC_text_width // 2), (SCREEN_HEIGHT // 2) + (VIC_text_height // 2)),
+            ((SCREEN_WIDTH // 2) - (VIC_text_width // 2), (SCREEN_HEIGHT // 2) + (VIC_text_height // 2) - 100),
             cv2.FONT_HERSHEY_SIMPLEX,
             5,
             (0, 255, 0),
@@ -258,7 +258,7 @@ def display_playing_content(image, contour, results):
         cv2.putText(
             image,
             "Press SPACE to restart",
-            ((SCREEN_WIDTH // 2) - (res_text_width // 2), (SCREEN_HEIGHT // 2) + (res_text_height // 2) + 150),
+            ((SCREEN_WIDTH // 2) - (res_text_width // 2), (SCREEN_HEIGHT // 2) + (res_text_height // 2) + 50),
             cv2.FONT_HERSHEY_SIMPLEX,
             2,
             (0, 0, 0),
@@ -267,7 +267,7 @@ def display_playing_content(image, contour, results):
         cv2.putText(
             image,
             "Press SPACE to restart",
-            ((SCREEN_WIDTH // 2) - (res_text_width // 2), (SCREEN_HEIGHT // 2) + (res_text_height // 2) + 150),
+            ((SCREEN_WIDTH // 2) - (res_text_width // 2), (SCREEN_HEIGHT // 2) + (res_text_height // 2) + 50),
             cv2.FONT_HERSHEY_SIMPLEX,
             2,
             (255, 255, 255),
@@ -285,24 +285,36 @@ def display_playing_content(image, contour, results):
     # This is the key change - draw skeleton continuously
     pose_valid = check_pose_with_contour(image, results, contour)
 
-    # Check if the timer has reached 5 seconds
-    if elapsed_time >= 5:
+    # Check if the timer has reached 10 seconds
+    if elapsed_time >= 10:
         # Use the already calculated pose_valid result
         if pose_valid:
             current_pose += 1
             if current_pose > total_poses:
                 victory = True
+
+                # load victory music
+                if mixer.music.get_busy():
+                        mixer.music.unload()
+                mixer.music.load("assets/victory_music.ogg")
+                mixer.music.play(-1)
                 return
         else:
             lives -= 1  # Deduct one heart
             if lives <= 0:
                 game_over = True
+
+                # load game over music
+                if mixer.music.get_busy():
+                        mixer.music.unload()
+                mixer.music.load("assets/game_over_music.ogg")
+                mixer.music.play(-1)
                 return
                 
         playing_countdown = time.time()  # Reset the timer for the next hole
         elapsed_time = 0  # Reset elapsed time
 
-    remaining_time = max(0, 5 - int(elapsed_time))
+    remaining_time = max(0, 10 - int(elapsed_time)) # 10 seconds timer
 
     # Draw the current pose contour
     if contour is not None:
@@ -318,7 +330,7 @@ def display_playing_content(image, contour, results):
     cv2.rectangle(
         image,
         (0, 0),
-        (340, 180),
+        (350, 180),
         (0, 0, 0),
         -1,
     )
@@ -332,10 +344,10 @@ def display_playing_content(image, contour, results):
         5,
     )
     
-    # Display current pose number
+    # Display levels
     cv2.putText(
         image,
-        f"Pose: {current_pose}/{total_poses}",
+        f"Level: {current_pose}/{total_poses}",
         (25, 150),
         cv2.FONT_HERSHEY_SIMPLEX,
         1.5,
@@ -405,9 +417,10 @@ def ready_to_play():
     # Load the first pose
     current_contour = load_pose_contour(current_pose)
 
-    mixer.music.unload()
+    # load get ready music
+    if mixer.music.get_busy():
+            mixer.music.unload()
     mixer.music.load("assets/ready_music.ogg")
-    pygame.time.delay(100)
     mixer.music.play(-1)
 
     while cap.isOpened():
@@ -453,6 +466,12 @@ def ready_to_play():
                 else:
                     game_started = True  # Start the game after countdown
                     playing_countdown = time.time()  # Start the game timer
+
+                    # load playing music
+                    if mixer.music.get_busy():
+                        mixer.music.unload()
+                    mixer.music.load("assets/playing_music.ogg")
+                    mixer.music.play(-1)
         else:
             # Game phase - check if pose matches the contour
             # If we need a new contour (after advancing to next pose)
