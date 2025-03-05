@@ -38,7 +38,7 @@ hole_rec_y_max = SCREEN_HEIGHT // 2 + HOLE_HEIGHT_REC // 2
 # Global variables for game state
 playing_countdown = None
 lives = 3
-current_pose = 1
+current_pose = 9
 total_poses = 10
 game_over = False
 victory = False
@@ -244,7 +244,7 @@ def display_playing_content(image, contour, results):
             cv2.FONT_HERSHEY_SIMPLEX,
             5,
             (0, 0, 0),
-            30,
+            50,
         )
         cv2.putText(
             image,
@@ -316,6 +316,15 @@ def display_playing_content(image, contour, results):
         else:
             lives -= 1  # Deduct one heart
             current_pose += 1 # Skip to the next pose
+            if current_pose > total_poses:
+                victory = True
+
+                # load victory music
+                if mixer.music.get_busy():
+                        mixer.music.unload()
+                mixer.music.load("assets/victory_music.ogg")
+                mixer.music.play(-1)
+                return
             if lives <= 0:
                 game_over = True
 
@@ -417,7 +426,7 @@ def ready_to_play():
     # Reset the game state each time the game starts
     playing_countdown = None
     lives = 3
-    current_pose = 1
+    current_pose = 9
     game_over = False
     victory = False
     
