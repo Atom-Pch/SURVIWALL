@@ -43,10 +43,6 @@ total_poses = 10
 game_over = False
 victory = False
 
-# Sounds
-correct_sound = pygame.mixer.Sound("assets/correct_sound.ogg")
-wrong_sound = pygame.mixer.Sound("assets/wrong_sound.ogg")
-
 # MediaPipe Pose Setup
 mp_pose = mp.solutions.pose
 pose = mp_pose.Pose(static_image_mode=False, min_detection_confidence=0.5)
@@ -73,13 +69,8 @@ def load_pose_contour(pose_number):
     if not contours:
         print(f"Error: No contours found in {image_path}")
         return None
-    
-    # Return the largest contour by area
-    if len(contours) > 1:
-        largest_contour = max(contours, key=cv2.contourArea)
-        return largest_contour.reshape(-1, 2).tolist()
-    else:
-        return contours[0].reshape(-1, 2).tolist()
+
+    return [cnt.reshape(-1, 2).tolist() for cnt in contours][0]
 
 def draw_box(image, started):
     """Draw the bounding box on the image."""
@@ -290,28 +281,6 @@ def display_playing_content(image, contour, results):
 
     elapsed_time = time.time() - playing_countdown
 
-    # Check if we have a valid contour
-    if contour is None:
-        # If contour is None, display an error message
-        cv2.putText(
-            image,
-            f"Error loading pose {current_pose}",
-            (SCREEN_WIDTH // 2 - 300, SCREEN_HEIGHT // 2),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            1.5,
-            (0, 0, 255),
-            3,
-        )
-        # Skip to next pose after a short delay
-        if elapsed_time >= 2:
-            current_pose += 1
-            if current_pose > total_poses:
-                victory = True
-                # Load victory music...
-                return
-            playing_countdown = time.time()
-        return
-
     # Always draw the skeleton regardless of timer
     # This is the key change - draw skeleton continuously
     # pose_valid = check_pose_with_contour(image, results, contour) #and check_pose_with_rectangle(image, results)
@@ -335,7 +304,6 @@ def display_playing_content(image, contour, results):
         # Use the already calculated pose_valid result
         if pose_valid:
             current_pose += 1
-            pygame.mixer.Sound.play(correct_sound)
             if current_pose > total_poses:
                 victory = True
 
@@ -348,7 +316,6 @@ def display_playing_content(image, contour, results):
         else:
             lives -= 1  # Deduct one heart
             current_pose += 1 # Skip to the next pose
-            pygame.mixer.Sound.play(wrong_sound)
             if lives <= 0:
                 game_over = True
 
@@ -460,8 +427,7 @@ def ready_to_play():
 
     countdown_start_time = None
     game_started = False  # Track if game has officially started
-    loaded_pose_number = 0  # Track which pose is currently loaded
-    current_contour = None
+    loaded_pose_number = current_pose  # Track which pose is currently loaded
     
     # Load the first pose
     current_contour = load_pose_contour(current_pose)
