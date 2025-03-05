@@ -38,7 +38,7 @@ hole_rec_y_max = SCREEN_HEIGHT // 2 + HOLE_HEIGHT_REC // 2
 # Global variables for game state
 playing_countdown = None
 lives = 3
-current_pose = 9
+current_pose = 1
 total_poses = 10
 game_over = False
 victory = False
@@ -426,7 +426,7 @@ def ready_to_play():
     # Reset the game state each time the game starts
     playing_countdown = None
     lives = 3
-    current_pose = 9
+    current_pose = 1
     game_over = False
     victory = False
     
