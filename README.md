@@ -1,5 +1,5 @@
 # SURVIWALL
-*Computer Vision project*
+*A mini project on Computer Vision*
 
 *2/2024*
 
