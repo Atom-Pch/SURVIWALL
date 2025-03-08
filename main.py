@@ -1,44 +1,451 @@
 import numpy as np
-import pygame, cv2
+import pygame
+import cv2
 import mediapipe as mp
+import time
+import os
+from pygame import mixer
 
+# Initialize Pygame
 pygame.init()
+mixer.init()
 
-# screen size and title
+# Screen size and title
 SCREEN_WIDTH = 1280
 SCREEN_HEIGHT = 720
 screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
 pygame.display.set_caption("SURVIWALL")
 
-run = True
+# Constants
+LINE_THICKNESS = 20
 
-def point_in_poly(x, y, poly):
-    num = len(poly)
-    inside = False
-    p1x, p1y = poly[0]
-    for i in range(num + 1):
-        p2x, p2y = poly[i % num]
-        if y > min(p1y, p2y):
-            if y <= max(p1y, p2y):
-                if x <= max(p1x, p2x):
-                    if p1y != p2y:
-                        xinters = (y - p1y) * (p2x - p1x) / (p2y - p1y) + p1x
-                    if p1x == p2x or x <= xinters:
-                        inside = not inside
-        p1x, p1y = p2x, p2y
-    return inside
+HOLE_WIDTH_LIMIT = 250
+HOLE_HEIGHT_LIMIT = 450
 
-def poseDetection():
-    mp_pose = mp.solutions.pose
-    mp_draw = mp.solutions.drawing_utils
-    pose = mp_pose.Pose(static_image_mode=False, min_detection_confidence=0.5)
+hole_limit_x_min = SCREEN_WIDTH // 2 - HOLE_WIDTH_LIMIT // 2
+hole_limit_x_max = SCREEN_WIDTH // 2 + HOLE_WIDTH_LIMIT // 2
+hole_limit_y_min = SCREEN_HEIGHT // 2 - HOLE_HEIGHT_LIMIT // 2
+hole_limit_y_max = SCREEN_HEIGHT // 2 + HOLE_HEIGHT_LIMIT // 2
+
+HOLE_WIDTH_REC = 400
+HOLE_HEIGHT_REC = 600
+
+hole_rec_x_min = SCREEN_WIDTH // 2 - HOLE_WIDTH_REC // 2
+hole_rec_x_max = SCREEN_WIDTH // 2 + HOLE_WIDTH_REC // 2
+hole_rec_y_min = SCREEN_HEIGHT // 2 - HOLE_HEIGHT_REC // 2
+hole_rec_y_max = SCREEN_HEIGHT // 2 + HOLE_HEIGHT_REC // 2
+
+# Global variables for game state
+playing_countdown = None
+lives = 3
+current_pose = 1
+total_poses = 10
+game_over = False
+victory = False
+
+# MediaPipe Pose Setup
+mp_pose = mp.solutions.pose
+pose = mp_pose.Pose(static_image_mode=False, min_detection_confidence=0.5)
+
+def load_pose_contour(pose_number):
+    """Load a pose image and extract its contour."""
+    image_path = f"assets/pose{pose_number}.png"
+
+    # Check if file exists
+    if not os.path.exists(image_path):
+        print(f"Error: Unable to load {image_path}")
+        return None
+
+    image = cv2.imread(image_path, cv2.IMREAD_GRAYSCALE)
+    if image is None:
+        print(f"Error: Unable to load {image_path}")
+        return None
+
+    # Convert image to binary and find contours
+    _, binary = cv2.threshold(image, 128, 255, cv2.THRESH_BINARY_INV)
+    contours, _ = cv2.findContours(binary, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+    # Check if contours were found
+    if not contours:
+        print(f"Error: No contours found in {image_path}")
+        return None
+
+    return [cnt.reshape(-1, 2).tolist() for cnt in contours][0]
+
+def draw_box(image, started):
+    """Draw the bounding box on the image."""
+    if not started:
+        # Draw recommended area (cyan)
+        cv2.rectangle(
+            image,
+            (hole_rec_x_min, hole_rec_y_min),
+            (hole_rec_x_max, hole_rec_y_max),
+            (255, 255, 0),
+            5,
+        )
+        # Draw minimum area (yellow)
+        cv2.rectangle(
+            image,
+            (hole_limit_x_min, hole_limit_y_min),
+            (hole_limit_x_max, hole_limit_y_max),
+            (0, 255, 255),
+            5,
+        )
+
+def check_pose_with_rectangle(image, results):
+    """Check if any pose landmarks are outside the minimum area."""
+    h, w, _ = image.shape
+    pose_valid = False
+
+    if results.pose_landmarks:
+        landmarks = results.pose_landmarks.landmark
+
+        all_landmarks_inside_hole = True  # Assume all landmarks are inside
+
+        for landmark in landmarks:
+            x, y = int(landmark.x * w), int(landmark.y * h)
+            if not (hole_limit_x_min <= x <= hole_limit_x_max and 
+                    hole_limit_y_min <= y <= hole_limit_y_max):
+                all_landmarks_inside_hole = False  # At least one landmark is outside
+                break  # No need to check further
+
+        pose_valid = not all_landmarks_inside_hole  # Valid if NOT all are inside
+
+        # Draw skeleton
+        for connection in mp_pose.POSE_CONNECTIONS:
+            start_idx, end_idx = connection
+            start = landmarks[start_idx]
+            end = landmarks[end_idx]
+
+            x1, y1 = int(start.x * w), int(start.y * h)
+            x2, y2 = int(end.x * w), int(end.y * h)
+
+            color = (0, 255, 0) if pose_valid else (0, 0, 255)
+            cv2.line(image, (x1, y1), (x2, y2), color, LINE_THICKNESS)
+
+    return pose_valid
+
+def check_pose_with_contour(image, results, contour):
+    """Check if pose matches the contour."""
+    h, w, _ = image.shape
+    pose_valid = False
+
+    if results.pose_landmarks and contour is not None:
+        landmarks = results.pose_landmarks.landmark
+
+        # Convert contour to numpy array for pointPolygonTest
+        contour_np = np.array(contour, np.int32)
+
+        skeleton_in_hole = True  # Assume skeleton is in hole
+        for landmark in landmarks:
+            x, y = int(landmark.x * w), int(landmark.y * h)
+            if cv2.pointPolygonTest(contour_np, (x, y), False) < 0:
+                skeleton_in_hole = False
+                break  # Exit loop if any point is outside
+
+        pose_valid = skeleton_in_hole  # Pose is valid if all points are inside
+
+        # Draw skeleton
+        for connection in mp_pose.POSE_CONNECTIONS:
+            start_idx, end_idx = connection
+            start = landmarks[start_idx]
+            end = landmarks[end_idx]
+
+            x1, y1 = int(start.x * w), int(start.y * h)
+            x2, y2 = int(end.x * w), int(end.y * h)
+
+            color = (0, 255, 0) if pose_valid else (0, 0, 255)
+            cv2.line(image, (x1, y1), (x2, y2), color, LINE_THICKNESS)
+
+    return pose_valid
+
+def display_message(image, pose_ready):
+    """Display a message on the image based on pose readiness."""
+    cv2.rectangle(
+        image,
+        (0, 0),
+        (400, 150),
+        (0, 0, 0),
+        -1,
+    )
+    if pose_ready:
+        cv2.putText(
+            image,
+            "Get ready!",
+            (30, 60),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            1.5,
+            (0, 255, 0),
+            3,
+        )
+    else:
+        cv2.putText(
+            image,
+            "Can't see you!",
+            (30, 90),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            1.5,
+            (0, 0, 255),
+            3,
+        )
+
+def display_playing_content(image, contour, results):
+    """Display playing content on the image, handle timer expiry, and deduct a heart."""
+    global playing_countdown, lives, current_pose, game_over, victory
+
+    # If game is over, show appropriate message and return
+    (res_text_width, res_text_height), _ = cv2.getTextSize("Press SPACE to restart", cv2.FONT_HERSHEY_SIMPLEX, 2, 10)
+    if game_over:
+        (GO_text_width, GO_text_height), _ = cv2.getTextSize("GAME OVER", cv2.FONT_HERSHEY_SIMPLEX, 5, 25)
+        cv2.putText(
+            image,
+            "GAME OVER",
+            ((SCREEN_WIDTH // 2) - (GO_text_width // 2), (SCREEN_HEIGHT // 2) + (GO_text_height // 2) - 100),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            5,
+            (0, 0, 0),
+            50,
+        )
+        cv2.putText(
+            image,
+            "GAME OVER",
+            ((SCREEN_WIDTH // 2) - (GO_text_width // 2), (SCREEN_HEIGHT // 2) + (GO_text_height // 2) - 100),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            5,
+            (0, 0, 255),
+            25,
+        )
+        cv2.putText(
+            image,
+            "Press SPACE to restart",
+            ((SCREEN_WIDTH // 2) - (res_text_width // 2), (SCREEN_HEIGHT // 2) + (res_text_height // 2) + 50),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            2,
+            (0, 0, 0),
+            20,
+        )
+        cv2.putText(
+            image,
+            "Press SPACE to restart",
+            ((SCREEN_WIDTH // 2) - (res_text_width // 2), (SCREEN_HEIGHT // 2) + (res_text_height // 2) + 50),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            2,
+            (255, 255, 255),
+            5,
+        )
+        return
     
-    cap = cv2.VideoCapture(0)  # Open webcam
+    if victory:
+        (VIC_text_width, VIC_text_height), _ = cv2.getTextSize("VICTORY", cv2.FONT_HERSHEY_SIMPLEX, 5, 25)
+        cv2.putText(
+            image,
+            "VICTORY",
+            ((SCREEN_WIDTH // 2) - (VIC_text_width // 2), (SCREEN_HEIGHT // 2) + (VIC_text_height // 2) - 100),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            5,
+            (0, 0, 0),
+            50,
+        )
+        cv2.putText(
+            image,
+            "VICTORY",
+            ((SCREEN_WIDTH // 2) - (VIC_text_width // 2), (SCREEN_HEIGHT // 2) + (VIC_text_height // 2) - 100),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            5,
+            (0, 255, 0),
+            25,
+        )
+        cv2.putText(
+            image,
+            "Press SPACE to restart",
+            ((SCREEN_WIDTH // 2) - (res_text_width // 2), (SCREEN_HEIGHT // 2) + (res_text_height // 2) + 50),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            2,
+            (0, 0, 0),
+            20,
+        )
+        cv2.putText(
+            image,
+            "Press SPACE to restart",
+            ((SCREEN_WIDTH // 2) - (res_text_width // 2), (SCREEN_HEIGHT // 2) + (res_text_height // 2) + 50),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            2,
+            (255, 255, 255),
+            5,
+        )
+        return
 
-    # Define the hole region in screen coordinates (adjust as needed)
-    hole_polygon = [(150, 150), (350, 150), (350, 450), (150, 450)]
-    # Landmarks to check: shoulders and hips
-    required_indices = [11, 12, 23, 24]
+    # Start or continue the countdown timer
+    if playing_countdown is None:
+        playing_countdown = time.time()  # Start the countdown for the current hole
+
+    elapsed_time = time.time() - playing_countdown
+
+    # Always draw the skeleton regardless of timer
+    # This is the key change - draw skeleton continuously
+    # pose_valid = check_pose_with_contour(image, results, contour) #and check_pose_with_rectangle(image, results)
+
+    if check_pose_with_rectangle(image, results):
+        pose_valid = check_pose_with_contour(image, results, contour)
+    else:
+        pose_valid =  check_pose_with_rectangle(image, results)
+        cv2.putText(
+            image,
+            "Too far!",
+            (25, 300),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            3,
+            (0, 0, 255),
+            10,
+        )
+
+    # Check if the timer has reached 10 seconds
+    if elapsed_time >= 10:
+        # Use the already calculated pose_valid result
+        if pose_valid:
+            current_pose += 1
+            if current_pose > total_poses:
+                victory = True
+
+                # load victory music
+                if mixer.music.get_busy():
+                        mixer.music.unload()
+                mixer.music.load("assets/victory_music.ogg")
+                mixer.music.play(-1)
+                return
+        else:
+            lives -= 1  # Deduct one heart
+            current_pose += 1 # Skip to the next pose
+            if current_pose > total_poses:
+                victory = True
+
+                # load victory music
+                if mixer.music.get_busy():
+                        mixer.music.unload()
+                mixer.music.load("assets/victory_music.ogg")
+                mixer.music.play(-1)
+                return
+            if lives <= 0:
+                game_over = True
+
+                # load game over music
+                if mixer.music.get_busy():
+                        mixer.music.unload()
+                mixer.music.load("assets/game_over_music.ogg")
+                mixer.music.play(-1)
+                return
+                
+        playing_countdown = time.time()  # Reset the timer for the next hole
+        elapsed_time = 0  # Reset elapsed time
+
+    remaining_time = max(0, 10 - int(elapsed_time)) # 10 seconds timer
+
+    # Draw the current pose contour
+    if contour is not None:
+        cv2.polylines(
+            image, 
+            [np.array(contour, np.int32)], 
+            isClosed=True, 
+            color=(255, 255, 0), 
+            thickness=10
+        )
+
+    # Display countdown timer and pose count
+    cv2.rectangle(
+        image,
+        (0, 0),
+        (360, 180),
+        (0, 0, 0),
+        -1,
+    )
+    cv2.putText(
+        image,
+        f"Time: {remaining_time}",
+        (25, 75),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        2,
+        (255, 255, 255),
+        5,
+    )
+    
+    # Display levels
+    cv2.putText(
+        image,
+        f"Level: {current_pose}/{total_poses}",
+        (25, 150),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        1.5,
+        (255, 255, 255),
+        3,
+    )
+
+    # Draw the player's remaining hearts
+    # Load the heart icon
+    heart_icon = cv2.imread("assets/heart.png", cv2.IMREAD_UNCHANGED)
+
+    # Check if the heart icon was loaded correctly
+    if heart_icon is None:
+        print("Failed to load heart icon.")
+    else:
+        # Resize the heart icon if necessary
+        heart_icon = cv2.resize(heart_icon, (100, 100))  # Adjust size as needed
+
+        # Extract the alpha channel from the heart icon for transparency
+        if heart_icon.shape[2] == 4:  # Check if the image has an alpha channel
+            alpha_channel = heart_icon[:, :, 3] / 255.0
+            heart_icon = heart_icon[:, :, :3]  # Remove alpha channel for BGR overlay
+        else:
+            alpha_channel = None
+
+        # Draw the player's remaining hearts
+        for i in range(lives):
+            # Calculate position for each heart
+            x_offset = SCREEN_WIDTH - 125 - i * 125
+            y_offset = 25
+
+            # Define the region of interest (ROI) on the main image
+            roi = image[y_offset:y_offset + 100, x_offset:x_offset + 100]
+
+            # Overlay heart icon using alpha blending if alpha channel exists
+            if alpha_channel is not None:
+                for c in range(3):  # Iterate over BGR channels
+                    roi[:, :, c] = (
+                        alpha_channel * heart_icon[:, :, c] + (1 - alpha_channel) * roi[:, :, c]
+                    )
+            else:
+                # Directly copy the heart icon if no alpha channel
+                roi[:, :, :] = heart_icon
+
+            # Place the modified ROI back into the main image
+            image[y_offset:y_offset + 100, x_offset:x_offset + 100] = roi
+
+def ready_to_play():
+    """Run the pose detection and game loop after starting."""
+    global playing_countdown, lives, current_pose, game_over, victory
+    
+    # Reset the game state each time the game starts
+    playing_countdown = None
+    lives = 3
+    current_pose = 1
+    game_over = False
+    victory = False
+    
+    cap = cv2.VideoCapture(0)
+    cap.set(3, SCREEN_WIDTH)
+    cap.set(4, SCREEN_HEIGHT)
+
+    countdown_start_time = None
+    game_started = False  # Track if game has officially started
+    loaded_pose_number = current_pose  # Track which pose is currently loaded
+    
+    # Load the first pose
+    current_contour = load_pose_contour(current_pose)
+
+    # load get ready music
+    if mixer.music.get_busy():
+            mixer.music.unload()
+    mixer.music.load("assets/ready_music.ogg")
+    mixer.music.play(-1)
 
     while cap.isOpened():
         success, image = cap.read()
@@ -51,65 +458,131 @@ def poseDetection():
         image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
         results = pose.process(image_rgb)
 
-        # Draw landmarks on the image for visualization
-        if results.pose_landmarks:
-            mp_draw.draw_landmarks(image, results.pose_landmarks, mp_pose.POSE_CONNECTIONS)
+        # Check if we're in the preparation phase or game phase
+        if not game_started:
+            # Preparation phase - check if player is in position
+            pose_ready = check_pose_with_rectangle(image, results)
+            draw_box(image, game_started)
+            display_message(image, pose_ready)
+            
+            # Start countdown if pose is ready
+            if pose_ready and countdown_start_time is None:
+                countdown_start_time = time.time()
+            
+            # Reset countdown if pose becomes not ready
+            if not pose_ready and countdown_start_time is not None:
+                countdown_start_time = None
+            
+            # If countdown is active, display it
+            if countdown_start_time is not None:
+                elapsed = time.time() - countdown_start_time
+                if elapsed < 10:  # 10-second countdown
+                    count = 10 - int(elapsed)
+                    cv2.putText(
+                        image,
+                        f"Countdown: {str(count)}",
+                        (30, 120),
+                        cv2.FONT_HERSHEY_SIMPLEX,
+                        1.5,
+                        (255, 255, 255),
+                        3,
+                    )
+                else:
+                    game_started = True  # Start the game after countdown
+                    playing_countdown = time.time()  # Start the game timer
 
-            # Check if required keypoints are within the hole (after converting coordinates)
-            correct_count = 0
-            for idx in required_indices:
-                landmark = results.pose_landmarks.landmark[idx]
-                # Convert normalized coordinates to pixel coordinates (assuming a 640x480 capture)
-                # Adjust these values if your capture resolution is different.
-                x = int(landmark.x * image.shape[1])
-                y = int(landmark.y * image.shape[0])
-                # Simple check: draw a circle where the landmark is (for debugging)
-                cv2.circle(image, (x, y), 5, (0, 0, 255), -1)
-                if point_in_poly(x, y, hole_polygon):
-                    correct_count += 1
+                    # load playing music
+                    if mixer.music.get_busy():
+                        mixer.music.unload()
+                    mixer.music.load("assets/playing_music.ogg")
+                    mixer.music.play(-1)
+        else:
+            # Game phase - check if pose matches the contour
+            # If we need a new contour (after advancing to next pose)
+            if current_pose != loaded_pose_number:
+                current_contour = load_pose_contour(current_pose)
+                loaded_pose_number = current_pose
 
-            if correct_count == len(required_indices):
-                cv2.putText(image, "Correct Pose!", (30, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+            # Display game content (timer, hearts, current pose)
+            display_playing_content(image, current_contour, results)
 
-        # Optionally, draw the hole on the OpenCV window for reference
-        cv2.polylines(image, [np.array(hole_polygon, np.int32)], isClosed=True, color=(255, 0, 0), thickness=3)
+        # Convert the OpenCV frame to a Pygame surface and display it
+        image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+        frame_surface = pygame.surfarray.make_surface(np.transpose(image_rgb, (1, 0, 2)))
+        screen.blit(frame_surface, (0, 0))
 
-        cv2.imshow('MediaPipe Pose', image)
-        if cv2.waitKey(30) & 0xFF == 27:  # ESC to exit pose detection
-            break
+        pygame.display.update()
 
-    cap.release()
-    cv2.destroyAllWindows()
-    del pose
+        # Handle events
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT or (event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE):
+                cap.release()
+                pygame.quit()
+                exit()
+            if event.type == pygame.KEYDOWN and event.key == pygame.K_SPACE:
+                cap.release()
+                main_music()
+                return  # Return to main menu instead of quitting
 
+def draw_menu():
+    """Draw the main menu."""
+    menu_bg = pygame.image.load("assets/menu_bg.png")
+    screen.blit(menu_bg, (0, 0))  # Set the background image for the menu
 
+    # Title
+    font = pygame.font.SysFont(None, 150, bold=True)
+    title_shadow = font.render("S U R V I W A L L", True, (0, 0, 0))
+    title_shadow_rect = title_shadow.get_rect(center=(SCREEN_WIDTH / 2, SCREEN_HEIGHT / 3))
+    screen.blit(title_shadow, title_shadow_rect)
 
+    font = pygame.font.SysFont(None, 144)
+    title = font.render("S U R V I W A L L", True, (255, 255, 255))
+    title_rect = title.get_rect(center=(SCREEN_WIDTH / 2, SCREEN_HEIGHT / 3))
+    screen.blit(title, title_rect)
 
+    # Start button
+    font = pygame.font.SysFont(None, 48)
+    start_btn = font.render("START", True, (255, 255, 255))
+    start_rect = start_btn.get_rect(center=(SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2))
 
+    # Give the button a visible box and border
+    pygame.draw.rect(screen, (0, 192, 0), start_rect.inflate(40, 40), 4)
 
+    # Hover over and click effects
+    if start_rect.collidepoint(pygame.mouse.get_pos()):
+        pygame.draw.rect(screen, (0, 128, 0), start_rect.inflate(32, 32), 0)
 
-# game loop
-while run:
-    # main menu
-    font = pygame.font.Font(None, 36)
-    title = font.render("SURVIWALL", False, (255, 255, 255))
-    titleRect = title.get_rect(center=(SCREEN_WIDTH / 2, SCREEN_HEIGHT / 3))
-    screen.blit(title, titleRect)
+    screen.blit(start_btn, start_rect)
 
-    # start button
-    font = pygame.font.Font(None, 24)
-    startBtn = font.render("START", False, (255, 255, 255))
-    startRect = startBtn.get_rect(center=(SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2))
-    screen.blit(startBtn, startRect)
+    return start_rect
 
-    for event in pygame.event.get():
-        if event.type == pygame.QUIT:
-            run = False
+def main_music():
+    """Play the main menu music."""
+    if mixer.music.get_busy():
+        mixer.music.unload()
+    mixer.music.load("assets/menu_music.ogg")
+    pygame.time.delay(100)
+    mixer.music.play(-1)
 
-        # pose detection
-        if startRect.collidepoint(pygame.mouse.get_pos()) and pygame.mouse.get_pressed()[0]:
-            poseDetection()
-    
-    pygame.display.update()
+"""Main game loop."""
+def main():
+    run = True
+    main_music()
 
-pygame.quit()
+    while run:
+        start_rect = draw_menu()
+
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT or (event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE):
+                run = False
+
+            if event.type == pygame.MOUSEBUTTONDOWN:
+                if start_rect.collidepoint(pygame.mouse.get_pos()):
+                    ready_to_play()
+
+        pygame.display.update()
+
+    pygame.quit()
+
+if __name__ == "__main__":
+    main()
